@@ -9,7 +9,7 @@ pipeline {
         APP_VM_IP = '172.31.9.55' 
         DEPLOY_DIR = '/var/www/employee-app'
         NODE_ENV = 'production'
-	MONGO_URI = credentials('mongo-uri')
+		MONGO_URI = credentials('mongo-uri')
     }
 
     stages {
