@@ -1,0 +1,7 @@
+nohup: ignoring input
+[dotenv@17.2.3] injecting env (3) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
+Loaded PORT from .env: 83
+About to listen on 83 host 127.0.0.1
+Server running on port 83
+Post-listen check: Server address: null
+Listen error: listen EADDRINUSE: address already in use 127.0.0.1:83

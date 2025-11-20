@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Employee App - Home</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="/">Employee App</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"><span class="navbar-toggler-icon"></span></button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item"><a class="nav-link active" href="/">Home</a></li>
+          <li class="nav-item"><a class="nav-link" href="/employees">Employees</a></li>
+          <li class="nav-item"><a class="nav-link" href="/add">Add</a></li>
+          <li class="nav-item"><a class="nav-link" href="/edit">Edit</a></li>
+        </ul>
+        <ul class="navbar-nav">
+          <li class="nav-item" id="loginLi"><a class="nav-link" href="/login">Login</a></li>
+          <li class="nav-item" id="logoutLi" style="display:none;"><a class="nav-link" href="#" onclick="logout()">Logout</a></li>
+          <li class="nav-item" id="roleDisplay" style="display:none;"><span class="navbar-text">Role: <span id="roleText"></span></span></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+  <div class="container mt-5">
+    <div class="row justify-content-center">
+      <div class="col-md-8">
+        <h1 class="text-center">Dashboard</h1>
+        <p class="lead text-center">Welcome! Manage your employees below.</p>
+        <div class="row g-3 mb-4" id="stats">
+          <div class="col-md-4"><div class="card text-center"><div class="card-body"><h5>Total Employees</h5><p id="total" class="display-6">Loading...</p></div></div></div>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6 col-lg-3"><a href="/employees" class="btn btn-primary w-100 h-100">View List</a></div>
+          <div class="col-md-6 col-lg-3"><a href="/add" class="btn btn-success w-100 h-100">Add New</a></div>
+          <div class="col-md-6 col-lg-3"><a href="/details?id=" + (localStorage.getItem('employeeId') || '') class="btn btn-info w-100 h-100">My Profile</a></div>
+          <div class="col-md-6 col-lg-3"><a href="/employees" class="btn btn-secondary w-100 h-100">Search & Filter</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const API_BASE = '/api';
+    const token = localStorage.getItem('token');
+    const role = localStorage.getItem('role');
+    if (!token) {
+      document.body.innerHTML += '<div class="alert alert-warning text-center">Please <a href="/login">login</a> to continue.</div>';
+    } else {
+      document.getElementById('loginLi').style.display = 'none';
+      document.getElementById('logoutLi').style.display = 'list-item';
+      document.getElementById('roleDisplay').style.display = 'list-item';
+      document.getElementById('roleText').textContent = role.charAt(0).toUpperCase() + role.slice(1);
+      // Load stats
+      fetch(`${API_BASE}/employees`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => document.getElementById('total').textContent = data.employees?.length || 0)
+        .catch(() => document.getElementById('total').textContent = 'Error');
+    }
+    function logout() {
+      localStorage.clear();
+      window.location.href = '/login';
+    }
+  </script>
+</body>
+</html>
