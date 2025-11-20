@@ -9,6 +9,7 @@ pipeline {
         APP_VM_IP = '172.31.9.55' 
         DEPLOY_DIR = '/var/www/employee-app'
         NODE_ENV = 'production'
+	MONGO_URI = credentials('mongo-uri')
     }
 
     stages {
@@ -37,7 +38,7 @@ pipeline {
         stage('Lint & Validate') {
             steps {
                 echo 'Linting code...'
-                sh 'npm run lint || echo "No linter configured—consider adding ESLint"'
+                echo "Skipping lint - no lint script configured"
                 
                 script {
                     // Smoke test: Temp start server, check MongoDB connect + API health
