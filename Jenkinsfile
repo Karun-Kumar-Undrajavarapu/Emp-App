@@ -145,4 +145,5 @@ pipeline {
             // Optional: mail to: 'your@email.com', subject: 'Deploy Failed'
         }
     }
+
 }
