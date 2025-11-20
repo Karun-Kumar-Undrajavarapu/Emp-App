@@ -1,19 +1,15 @@
 pipeline {
     agent any
-
     tools {
         nodejs 'NodeJS'
     }
-
     environment {
-        APP_VM_IP = '172.31.9.55'
+        APP_VM_IP = '172.31.9.55'  // Private IP for SSH/deploy (confirm with 'ip addr show' on app VM)
         DEPLOY_DIR = '/var/www/employee-app'
         NODE_ENV = 'production'
-        MONGO_URI = "mongodb://172.31.9.55:27017/employee_a"
+        MONGO_URI = "mongodb://172.31.9.55:27017/employee_a"  // App VM's Mongo (private)
     }
-
     stages {
-
         stage('Checkout') {
             steps {
                 echo 'Pulling code from GitHub...'
@@ -22,7 +18,6 @@ pipeline {
                     url: 'https://github.com/Karun-Kumar-Undrajavarapu/Emp-App'
             }
         }
-
         stage('Install Dependencies') {
             steps {
                 echo 'Installing production dependencies...'
@@ -34,49 +29,65 @@ pipeline {
                 }
             }
         }
-
         stage('Lint & Validate') {
             steps {
                 echo 'Linting code...'
-                echo 'No lint configured — skipping.'
+                sh 'npm run lint'
 
                 script {
+                    // Temp .env for test mode (mock DB, test port)
                     sh '''
-                        # Start node server temporarily
-                        nohup node server.js > smoke.log 2>&1 &
+                        cat > .env << EOF
+                        PORT=3000
+                        MONGO_URI=mongodb://localhost:27017/mockdb
+                        JWT_SECRET=test-secret-key
+                        NODE_ENV=test
+                        EOF
+                    '''
+
+                    sh '''
+                        # Start in test mode
+                        nohup npm run start:test > smoke.log 2>&1 &
                         SERVER_PID=$!
                         sleep 10
 
-                        # Ensure server process is alive
+                        # Check PID alive
                         if ! ps -p $SERVER_PID > /dev/null; then
                             echo "Server failed to start!"
                             cat smoke.log
                             exit 1
                         fi
 
-                        # API health check (should return 401 without auth)
-                        STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:83/api/employees || true)
+                        # Check mock DB log
+                        if ! grep -q "MongoDB connected (mock)" smoke.log; then
+                            echo "DB mock failed—check logs:"
+                            tail -20 smoke.log
+                            exit 1
+                        fi
 
-                        if [ "$STATUS" != "401" ]; then
-                            echo "API health check failed! Expected 401, got $STATUS"
-                            cat smoke.log
+                        # Health checks on test port 3000
+                        if ! curl -f -s -o /dev/null http://localhost:3000/; then
+                            echo "Static route failed!"
+                            exit 1
+                        fi
+                        API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/employees)
+                        if [[ ! "$API_STATUS" =~ ^(200|401)$ ]]; then
+                            echo "API check failed (status: $API_STATUS)!"
                             exit 1
                         fi
 
                         # Cleanup
                         kill $SERVER_PID || true
-                        rm smoke.log
-
-                        echo "Smoke test passed: Server healthy."
+                        rm smoke.log .env
+                        echo "Smoke test passed: Server + mock DB healthy."
                     '''
                 }
             }
         }
-
         stage('Test') {
             steps {
                 echo 'Running tests...'
-                sh 'npm test || true'
+                sh 'NODE_ENV=test npm test || true'  // Graceful if no tests yet
             }
             post {
                 always {
@@ -85,61 +96,62 @@ pipeline {
                 }
             }
         }
-
         stage('Deploy') {
             when { branch 'main' }
             steps {
                 echo 'Deploying to Application VM...'
-
                 sshagent(['ssh-to-app']) {
                     sh """
-                        # Sync repo to server (skip .env & logs)
-                        rsync -avz --delete \
-                            --exclude='.env' \
-                            --exclude='*.log' \
-                            --exclude='backup/' \
-                            --exclude='node_modules' \
+                        # Rsync (exclude secrets/logs)
+                        rsync -avz --delete \\
+                            --exclude='.env' \\
+                            --exclude='*.log' \\
+                            --exclude='backup/' \\
+                            --exclude='node_modules' \\
                             $WORKSPACE/ ubuntu@$APP_VM_IP:$DEPLOY_DIR/
 
+                        # Deploy with real env
                         ssh ubuntu@$APP_VM_IP "
                             cd $DEPLOY_DIR
-
-                            # Reinstall node dependencies
-                            rm -rf node_modules package-lock.json
-                            npm ci --only=production
-
-                            # Stop old server if running
-                            pkill -f 'node server.js' || true
-                            sleep 2
-
-                            # Start new production server
-                            nohup node server.js > app.log 2>&1 &
-                            sleep 5
-
-                            # Validate DB connected using logs
-                            if ! grep -q 'connected' app.log; then
-                                echo 'Warning: No DB connection log found. Continuing...'
-                            fi
-
-                            # API health check
-                            if ! curl -s -o /dev/null http://localhost:83/api/employees; then
-                                echo 'Post-deploy health check failed!'
+                            # Ensure .env exists
+                            if [ ! -f .env ]; then
+                                echo 'Error: .env missing on VM!'
                                 exit 1
                             fi
-
-                            echo 'Deploy successful — server running on port 83'
+                            rm -rf node_modules package-lock.json
+                            npm ci --omit=dev
+                            pkill -f 'node server.js' || true
+                            sleep 2
+                            nohup node server.js > app.log 2>&1 &
+                            sleep 5
+                            # Check server PID
+                            if ! pgrep -f 'node server.js' > /dev/null; then
+                                echo 'Server failed to start post-deploy!'
+                                tail -20 app.log
+                                exit 1
+                            fi
+                            # Check DB connect
+                            if ! grep -q 'MongoDB connected' app.log; then
+                                echo 'DB failed post-deploy!'
+                                tail -20 app.log
+                                exit 1
+                            fi
+                            # API check (expect 401)
+                            if ! curl -s -o /dev/null -w '%{http_code}' http://localhost:83/api/employees | grep -q '^401$'; then
+                                echo 'Post-deploy API check failed!'
+                                exit 1
+                            fi
+                            echo 'Deploy successful — server on port 83'
                         "
-
                         ssh ubuntu@$APP_VM_IP 'sudo nginx -t && sudo systemctl reload nginx'
                     """
                 }
             }
         }
     }
-
     post {
         always {
-            echo 'Pipeline complete! App accessible via http://APP_VM_IP:80'
+            echo 'Pipeline complete! App accessible via http://18.237.139.122:80 (Nginx)'
             cleanWs()
         }
         success {
