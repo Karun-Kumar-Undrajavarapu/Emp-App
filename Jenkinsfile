@@ -72,7 +72,7 @@ pipeline {
                         fi
 
                         # Health checks on test port 3000
-                        if ! curl -f -s -o /dev/null http://localhost:3000/; then
+                        if ! curl -f -s -o /dev/null http://localhost:3000/; 
                             echo "Static route failed!"
                             exit 1
                         fi
