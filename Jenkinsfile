@@ -137,7 +137,7 @@ pipeline {
                                 exit 1
                             fi
                             # API check (expect 401)
-                            if ! curl -s -o /dev/null -w '%{http_code}' http://localhost:83/api/employees | grep -q '^401$'; then
+                            if ! curl -s -o /dev/null -w '%{http_code}' http://localhost:83/api/employees | grep -q '^401\$'; then
                                 echo 'Post-deploy API check failed!'
                                 exit 1
                             fi
