@@ -28,7 +28,7 @@ if (process.env.NODE_ENV === 'test') {
 
 // Middleware
 app.use(helmet());
-app.use(cors({ origin: ['http://localhost:83', 'http://18.237.139.122:83'] }));
+app.use(cors({ origin: ['http://localhost:83'] }));
 app.use(express.json());
 app.use(express.static(__dirname));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));

@@ -4,10 +4,10 @@ pipeline {
         nodejs 'NodeJS'
     }
     environment {
-        APP_VM_IP = '172.31.9.55'  // Private IP for SSH/deploy (confirm with 'ip addr show' on app VM)
+        APP_VM_IP = '172.31.9.55'  // Private IP
         DEPLOY_DIR = '/var/www/employee-app'
         NODE_ENV = 'production'
-        MONGO_URI = "mongodb://172.31.9.55:27017/employee_a"  // App VM's Mongo (private)
+        MONGO_URI = "mongodb://172.31.9.55:27017/employee_a"
     }
     stages {
         stage('Checkout') {
@@ -31,11 +31,16 @@ pipeline {
         }
         stage('Lint & Validate') {
             steps {
-                echo 'Linting code...'
-                sh 'npm run lint'
-
                 script {
-                    // Temp .env for test mode (mock DB, test port)
+                    // Install dev for lint (temp)
+                    sh '''
+                        npm install  # Includes dev (ESLint)
+                        npm prune --omit=dev  # Clean back to prod after lint
+                    '''
+                    echo 'Linting code...'
+                    sh 'npm run lint'
+
+                    // Temp .env for test mode
                     sh '''
                         cat > .env << EOF
                         PORT=3000
@@ -46,6 +51,7 @@ pipeline {
                     '''
 
                     sh '''
+                        set -e  # Exit on error
                         # Start in test mode
                         nohup npm run start:test > smoke.log 2>&1 &
                         SERVER_PID=$!
@@ -54,11 +60,11 @@ pipeline {
                         # Check PID alive
                         if ! ps -p $SERVER_PID > /dev/null; then
                             echo "Server failed to start!"
-                            cat smoke.log
+                            tail -20 smoke.log
                             exit 1
                         fi
 
-                        # Check mock DB log
+                        # Check mock DB log (quoted for parens)
                         if ! grep -q "MongoDB connected (mock)" smoke.log; then
                             echo "DB mock failed—check logs:"
                             tail -20 smoke.log
@@ -78,7 +84,7 @@ pipeline {
 
                         # Cleanup
                         kill $SERVER_PID || true
-                        rm smoke.log .env
+                        rm -f smoke.log .env
                         echo "Smoke test passed: Server + mock DB healthy."
                     '''
                 }
@@ -87,7 +93,7 @@ pipeline {
         stage('Test') {
             steps {
                 echo 'Running tests...'
-                sh 'NODE_ENV=test npm test || true'  // Graceful if no tests yet
+                sh 'NODE_ENV=test npm test || true'
             }
             post {
                 always {
@@ -108,12 +114,11 @@ pipeline {
                             --exclude='*.log' \\
                             --exclude='backup/' \\
                             --exclude='node_modules' \\
-                            $WORKSPACE/ ubuntu@$APP_VM_IP:$DEPLOY_DIR/
+                            \$WORKSPACE/ ubuntu@\$APP_VM_IP:\$DEPLOY_DIR/
 
                         # Deploy with real env
-                        ssh ubuntu@$APP_VM_IP "
-                            cd $DEPLOY_DIR
-                            # Ensure .env exists
+                        ssh ubuntu@\$APP_VM_IP "
+                            cd \$DEPLOY_DIR
                             if [ ! -f .env ]; then
                                 echo 'Error: .env missing on VM!'
                                 exit 1
@@ -124,26 +129,24 @@ pipeline {
                             sleep 2
                             nohup node server.js > app.log 2>&1 &
                             sleep 5
-                            # Check server PID
                             if ! pgrep -f 'node server.js' > /dev/null; then
-                                echo 'Server failed to start post-deploy!'
+                                echo 'Server failed post-deploy!'
                                 tail -20 app.log
                                 exit 1
                             fi
-                            # Check DB connect
                             if ! grep -q 'MongoDB connected' app.log; then
                                 echo 'DB failed post-deploy!'
                                 tail -20 app.log
                                 exit 1
                             fi
-                            # API check (expect 401)
-                            if ! curl -s -o /dev/null -w '%{http_code}' http://localhost:83/api/employees | grep -q '^401\$'; then
-                                echo 'Post-deploy API check failed!'
+                            API_STATUS=\$(curl -s -o /dev/null -w '%{http_code}' http://localhost:83/api/employees)
+                            if [ "\$API_STATUS" != "401" ]; then
+                                echo 'Post-deploy API check failed (status: \$API_STATUS)!'
                                 exit 1
                             fi
                             echo 'Deploy successful — server on port 83'
                         "
-                        ssh ubuntu@$APP_VM_IP 'sudo nginx -t && sudo systemctl reload nginx'
+                        ssh ubuntu@\$APP_VM_IP 'sudo nginx -t && sudo systemctl reload nginx'
                     """
                 }
             }
@@ -162,4 +165,3 @@ pipeline {
         }
     }
 }
-
