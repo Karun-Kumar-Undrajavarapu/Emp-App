@@ -64,7 +64,7 @@ pipeline {
                         fi
 
                         # Check mock DB log (quoted for parens)
-                        if ! grep -q "MongoDB connected (mock)" smoke.log; then
+                        if ! grep -q "MongoDB\ connected\ \(mock\)" smoke.log; then
                             echo "DB mock failed—check logs:"
                             tail -20 smoke.log
                             exit 1
