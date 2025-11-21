@@ -2,8 +2,9 @@
   "name": "employee-app",
   "version": "1.0.0",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
-    "test": "jest",
+    "test": "NODE_ENV=test jest --detectOpenHandles",
     "start:test": "NODE_ENV=test node server.js",
     "lint": "eslint . --ext .js --fix || echo 'No ESLint issues or install eslint'"
   },
