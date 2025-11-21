@@ -76,7 +76,8 @@ pipeline {
                             exit 1
                         fi
                         API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/employees)
-                        if [[ ! "$API_STATUS" =~ ^(200|401)$ ]]; then
+                       // if [[ ! "$API_STATUS" =~ ^(200|401)$ ]]; then
+                          if [ "$API_STATUS" != "200" ] && [ "$API_STATUS" != "401" ]; then
                             echo "API check failed (status: $API_STATUS)!"
                             exit 1
                         fi
