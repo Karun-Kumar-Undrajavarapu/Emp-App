@@ -4,7 +4,7 @@ pipeline {
         nodejs 'NodeJS'
     }
     environment {
-        APP_VM_IP = '172.31.9.55'  // Private IP
+        APP_VM_IP = '172.31.9.55'  // Private IP for app VM
         DEPLOY_DIR = '/var/www/employee-app'
         NODE_ENV = 'production'
         MONGO_URI = "mongodb://172.31.9.55:27017/employee_a"
@@ -32,10 +32,9 @@ pipeline {
         stage('Lint & Validate') {
             steps {
                 script {
-                    // Install dev for lint (temp)
+                    // Temp install dev for lint (prune after)
                     sh '''
-                        npm install  # Includes dev (ESLint)
-                        npm prune --omit=dev  # Clean back to prod after lint
+                        npm install  # Includes dev (ESLint/Jest)
                     '''
                     echo 'Linting code...'
                     sh 'npm run lint'
@@ -72,7 +71,7 @@ pipeline {
                         fi
 
                         # Health checks on test port 3000
-                        if ! curl -f -s -o /dev/null http://localhost:3000/; 
+                        if ! curl -f -s -o /dev/null http://localhost:3000/; then
                             echo "Static route failed!"
                             exit 1
                         fi
@@ -87,6 +86,8 @@ pipeline {
                         rm -f smoke.log .env
                         echo "Smoke test passed: Server + mock DB healthy."
                     '''
+                    // Prune dev after validation (keep prod-only for later stages)
+                    sh 'npm prune --omit=dev'
                 }
             }
         }
