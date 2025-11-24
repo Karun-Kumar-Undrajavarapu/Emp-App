@@ -4,7 +4,7 @@ pipeline {
         nodejs 'NodeJS'
     }
     environment {
-        APP_VM_IP = '172.31.9.55'  // Private IP for app VM
+        APP_VM_IP = '172.31.9.55' // Private IP for app VM
         DEPLOY_DIR = '/var/www/employee-app'
         NODE_ENV = 'production'
         MONGO_URI = "mongodb://172.31.9.55:27017/employee_a"
@@ -32,14 +32,11 @@ pipeline {
         stage('Lint & Validate') {
             steps {
                 script {
-                    // Temp install dev for lint (prune after)
                     sh '''
-                        npm install  # Includes dev (ESLint/Jest)
+                        npm install # Includes dev (ESLint/Jest)
                     '''
                     echo 'Linting code...'
                     sh 'npm run lint'
-
-                    // Temp .env for test mode
                     sh '''
                         cat > .env << EOF
                         PORT=3000
@@ -48,46 +45,34 @@ pipeline {
                         NODE_ENV=test
                         EOF
                     '''
-
                     sh '''
-                        set -e  # Exit on error
-                        # Start in test mode
+                        set -e
                         nohup npm run start:test > smoke.log 2>&1 &
                         SERVER_PID=$!
                         sleep 10
-
-                        # Check PID alive
                         if ! ps -p $SERVER_PID > /dev/null; then
                             echo "Server failed to start!"
                             tail -20 smoke.log
                             exit 1
                         fi
-
-                        # Check mock DB log (quoted for parens)
                         if ! grep -q "MongoDB connected (mock)" smoke.log; then
                             echo "DB mock failed—check logs:"
                             tail -20 smoke.log
                             exit 1
                         fi
-
-                        # Health checks on test port 3000
                         if ! curl -f -s -o /dev/null http://localhost:3000/; then
                             echo "Static route failed!"
                             exit 1
                         fi
                         API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/employees)
-                       // if [[ ! "$API_STATUS" =~ ^(200|401)$ ]]; then
-                          if [ "$API_STATUS" != "200" ] && [ "$API_STATUS" != "401" ]; then
+                        if [ "$API_STATUS" != "200" ] && [ "$API_STATUS" != "401" ]; then
                             echo "API check failed (status: $API_STATUS)!"
                             exit 1
                         fi
-
-                        # Cleanup
                         kill $SERVER_PID || true
                         rm -f smoke.log .env
                         echo "Smoke test passed: Server + mock DB healthy."
                     '''
-                    // Prune dev after validation (keep prod-only for later stages)
                     sh 'npm prune --omit=dev'
                 }
             }
@@ -110,15 +95,12 @@ pipeline {
                 echo 'Deploying to Application VM...'
                 sshagent(['ssh-to-app']) {
                     sh """
-                        # Rsync (exclude secrets/logs)
                         rsync -avz --delete \\
                             --exclude='.env' \\
                             --exclude='*.log' \\
                             --exclude='backup/' \\
                             --exclude='node_modules' \\
                             \$WORKSPACE/ ubuntu@\$APP_VM_IP:\$DEPLOY_DIR/
-
-                        # Deploy with real env
                         ssh ubuntu@\$APP_VM_IP "
                             cd \$DEPLOY_DIR
                             if [ ! -f .env ]; then
