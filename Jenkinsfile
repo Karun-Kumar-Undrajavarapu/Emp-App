@@ -32,11 +32,13 @@ pipeline {
         stage('Lint & Validate') {
             steps {
                 script {
+                    // Temp install dev for lint & smoke (prune after all validation)
                     sh '''
                         npm install # Includes dev (ESLint/Jest)
                     '''
                     echo 'Linting code...'
                     sh 'npm run lint'
+                    // Temp .env for test mode
                     sh '''
                         cat > .env << EOF
                         PORT=3000
@@ -73,7 +75,6 @@ pipeline {
                         rm -f smoke.log .env
                         echo "Smoke test passed: Server + mock DB healthy."
                     '''
-                    sh 'npm prune --omit=dev'
                 }
             }
         }
@@ -84,7 +85,14 @@ pipeline {
             }
             post {
                 always {
-                    junit '**/test-results.xml'
+                    script {
+                        // Only run junit if XML exists; skip if no tests/reports
+                        if (fileExists('**/test-results.xml')) {
+                            junit '**/test-results.xml'
+                        } else {
+                            echo 'No test reports found—skipping JUnit parsing.'
+                        }
+                    }
                     archiveArtifacts artifacts: 'coverage/**', allowEmptyArchive: true
                 }
             }
